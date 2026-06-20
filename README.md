@@ -55,5 +55,43 @@ For each line in `history_chain.jsonl`:
    from the sorted per-agent list to confirm the scores match what was committed
    on that date.
 
+## Methodology versioning & drift guard
+
+Each entry from the foundation onward carries a `methodology` block **inside the
+signed/hashed body**:
+
+```json
+"methodology": {
+  "version": "v1",
+  "params": { "weights": {...}, "min_distinct_clients": 3,
+              "volume_ref": 50.0, "recency_halflife_blocks": 50000 },
+  "params_sha256": "sha256:..."
+}
+```
+
+- **`params_sha256` binds the methodology to the signed entry.** It is
+  `sha256(canonical_json(normalised_params))` where canonical JSON uses
+  `sort_keys=True, separators=(",",":"), ensure_ascii=False`, and **float
+  normalisation** formats every float with Python `format(x, ".10g")` before
+  serialising (so the hash never depends on float-repr quirks). The exact same
+  function produces the hash on write and on the drift check.
+- **Version boundaries (how a third party reads them):** scan entries by `seq`.
+  All entries sharing a `methodology.version` were produced under the identical
+  `params_sha256` — i.e. byte-for-byte the same scoring parameters. A change in
+  `version` (e.g. `v1 -> v2`) marks an **intentional, human-acknowledged**
+  methodology change; the `params_sha256` will differ across that boundary, and
+  scores before vs after a boundary are not directly comparable.
+- **Drift guard.** The producer refuses to append if the live scoring params
+  differ from the last recorded `params_sha256` **without** a matching version
+  bump (silent drift) — it writes a private alert and stops instead. So within a
+  single `version`, the parameters are guaranteed unchanged.
+- **Retroactive declaration.** Entries written before this scheme existed (no
+  `methodology` block) are covered by a one-time `declares` field on the first
+  `v1` entry, stating which earlier `seq` range was produced under `v1`.
+
+Verifiers should re-serialise **whatever fields each entry actually has** when
+recomputing `h` (the schema is additive — older entries simply lack
+`methodology`/`declares`).
+
 Scores are computed read-only with the Agent Trust Oracle's own methodology
 (value_avg / volume / recency; min 3 distinct clients). Educational; not advice.
