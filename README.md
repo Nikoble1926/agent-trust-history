@@ -62,10 +62,12 @@ signed/hashed body**:
 
 ```json
 "methodology": {
-  "version": "v1",
-  "params": { "weights": {...}, "min_distinct_clients": 3,
-              "volume_ref": 50.0, "recency_halflife_blocks": 50000 },
-  "params_sha256": "sha256:..."
+  "version": "v1.1",
+  "params": { "weights": {...}, "min_distinct_clients": 3, "volume_ref": 50.0,
+              "client_breadth_ref": 25.0, "recency_halflife_blocks": 50000 },
+  "params_sha256": "sha256:...",
+  "code_sha256": "sha256:...",
+  "note": "coverage refinement, behavior unchanged"
 }
 ```
 
@@ -75,16 +77,27 @@ signed/hashed body**:
   normalisation** formats every float with Python `format(x, ".10g")` before
   serialising (so the hash never depends on float-repr quirks). The exact same
   function produces the hash on write and on the drift check.
+- **`code_sha256` binds the scoring _logic_** (added in `v1.1`). It is
+  `sha256` over the concatenated source of the score-affecting functions
+  (`_normalise_value_to_100`, `_log_axis`, `_recency_weight`, `compute_score`),
+  in fixed order. Where `params_sha256` pins the named constants, `code_sha256`
+  pins the formula — a second tripwire so a change to the computation itself
+  cannot slip through unversioned. Entries before `v1.1` simply lack this field.
 - **Version boundaries (how a third party reads them):** scan entries by `seq`.
   All entries sharing a `methodology.version` were produced under the identical
-  `params_sha256` — i.e. byte-for-byte the same scoring parameters. A change in
-  `version` (e.g. `v1 -> v2`) marks an **intentional, human-acknowledged**
-  methodology change; the `params_sha256` will differ across that boundary, and
-  scores before vs after a boundary are not directly comparable.
+  `params_sha256` **and** `code_sha256` — byte-for-byte the same scoring
+  parameters and logic. A change in `version` marks an **intentional,
+  human-acknowledged** methodology change. The `v1 -> v1.1` boundary is a
+  **coverage refinement only**: `v1.1` records `client_breadth_ref` (previously
+  an implicit constant) plus `code_sha256`; the scoring code is byte-for-byte
+  unchanged, so scores are identical across it — flagged by the entry's
+  `note: "coverage refinement, behavior unchanged"`. A future `-> v2` would
+  signal a real change where scores before vs after are not directly comparable.
 - **Drift guard.** The producer refuses to append if the live scoring params
-  differ from the last recorded `params_sha256` **without** a matching version
-  bump (silent drift) — it writes a private alert and stops instead. So within a
-  single `version`, the parameters are guaranteed unchanged.
+  **or** the scoring code differ from the last recorded `params_sha256` /
+  `code_sha256` **without** a matching version bump (silent drift) — it writes a
+  private alert and stops instead. So within a single `version`, both the
+  parameters and the scoring logic are guaranteed unchanged.
 - **Retroactive declaration.** Entries written before this scheme existed (no
   `methodology` block) are covered by a one-time `declares` field on the first
   `v1` entry, stating which earlier `seq` range was produced under `v1`.
