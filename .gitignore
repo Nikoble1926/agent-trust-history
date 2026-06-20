@@ -1,0 +1,10 @@
+# Defense in depth — these never live in this repo dir, but exclude them anyway.
+.signing_key
+*.signing_key
+*key*
+venv/
+snapshots/
+*.log
+.chain.lock
+.env
+.env.*
