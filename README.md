@@ -106,5 +106,18 @@ Verifiers should re-serialise **whatever fields each entry actually has** when
 recomputing `h` (the schema is additive — older entries simply lack
 `methodology`/`declares`).
 
+## Snapshot files & reveal locating
+
+Each chain entry records its own `snapshot_file`. **Always locate a snapshot via that field — never reconstruct the path from the date.** This lets both naming schemes coexist:
+
+- **seq 0–2** (launch day 2026-06-20): date-keyed `snapshots/YYYY-MM-DD.json`.
+- **seq 3 onward:** per-entry `snapshots/{date}_seq{N}.json` (collision-free, so same-day version boundaries each keep their own sidecar).
+
+Snapshots stay private under commit-reveal; only each entry's `snapshot_sha256` digest is published here until a reveal.
+
+### Launch-day reveal note (seq 0–2)
+
+Three entries were written on 2026-06-20 under the old date-keyed scheme. seq 1 and seq 2 sidecars are byte-exact recoverable (sha matches the signed digest); **seq 0's exact bytes are not reproducible and were deliberately not reconstructed** — forging bytes to match a signed hash would defeat the commitment. Per-agent scores are identical across seq 0–2 (same `agents_sha256` in all three entries; `scoring.py` unchanged that day).
+
 Scores are computed read-only with the Agent Trust Oracle's own methodology
 (value_avg / volume / recency; min 3 distinct clients). Educational; not advice.
